@@ -11,7 +11,7 @@ set(LIB_EXPORT_NAME "${LIBRARY_NAME}Targets")
 set(LIB_CONFIG_NAME "${LIBRARY_NAME}Config")
 set(LIB_VERSION_NAME "${LIB_CONFIG_NAME}Version")
 
-cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.25)
 project("${PROJECT_NAME}" VERSION 0.1.5)
 
 if(NOT DEFINED BUILD_IN_OBS)
@@ -21,7 +21,8 @@ endif()
 find_package(Qt6 REQUIRED COMPONENTS Widgets)
 
 if(NOT ${BUILD_IN_OBS})
-		set(CMAKE_CXX_STANDARD 20)
+		set(CMAKE_CXX_STANDARD 17)
+		set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 		find_package(libobs REQUIRED)
 		find_package(obs-frontend-api REQUIRED)
@@ -70,6 +71,7 @@ set(CMAKE_AUTOMOC ON)
 add_library(${LIBRARY_NAME} SHARED ${LIB_SRC_FILES} ${VT_UI_HEADERS})
 add_library("${NAMESPACE_NAME}::${LIBRARY_NAME}" ALIAS ${LIBRARY_NAME})
 target_compile_options(${LIBRARY_NAME} PUBLIC $<$<OR:$<CXX_COMPILER_ID:Clang>,$<CXX_COMPILER_ID:GNU>>:-Wall -Wextra>)
+target_compile_options(${LIBRARY_NAME} PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/W4>)
 
 set_target_properties(${LIBRARY_NAME} PROPERTIES PREFIX "")
 
