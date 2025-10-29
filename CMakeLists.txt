@@ -18,6 +18,9 @@ if(NOT DEFINED BUILD_IN_OBS)
 		set(BUILD_IN_OBS OFF)
 endif()
 
+# Include OBS dependencies configuration (sets CMAKE_PREFIX_PATH)
+include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/obs-dependencies.cmake")
+
 find_package(Qt6 REQUIRED COMPONENTS Widgets)
 
 if(NOT ${BUILD_IN_OBS})
@@ -43,9 +46,10 @@ if(NOT ${BUILD_IN_OBS})
 		endif()
 endif()
 
-if(NOT TARGET OBS::obs-frontend-api)
-	add_library(OBS::obs-frontend-api ALIAS obs-frontend-api)
-endif()
+# Include OBS dependencies configuration (sets CMAKE_PREFIX_PATH)
+
+
+# Include OBS dependencies configuration (sets CMAKE_PREFIX_PATH)
 
 set(LIB_SRC_FILES
 		obs_scene_tree_view/obs_scene_tree_view.cpp
@@ -107,3 +111,5 @@ else()
 		install(DIRECTORY "data/locale"
 				DESTINATION "${OBS_PLUGIN_DATA_DIR}/${PROJECT_NAME}")
 endif()
+
+# Include OBS dependencies configuration (sets CMAKE_PREFIX_PATH)
