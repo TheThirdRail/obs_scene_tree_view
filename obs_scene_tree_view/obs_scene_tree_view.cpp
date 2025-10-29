@@ -13,11 +13,16 @@
 
 #include <obs-module.h>
 #include <util/platform.h>
+#include <obs-frontend-api.h>
 
 
 OBS_DECLARE_MODULE();
 OBS_MODULE_AUTHOR("DigitOtter");
 OBS_MODULE_USE_DEFAULT_LOCALE(PROJECT_DATA_FOLDER, "en-US");
+
+// Global dock pointer and registration status for retry logic
+static ObsSceneTreeView *g_stv_dock = nullptr;
+static bool g_stv_added = false;
 
 MODULE_EXPORT const char *obs_module_description(void)
 {
@@ -29,7 +34,7 @@ MODULE_EXPORT const char *obs_module_name(void)
 	return obs_module_text("SceneTreeView");
 }
 
-bool obs_module_load()
+MODULE_EXPORT bool obs_module_load(void)
 {
 	blog(LOG_INFO, "[%s] loaded version %s", obs_module_name(), PROJECT_VERSION);
 
@@ -39,7 +44,33 @@ bool obs_module_load()
 
 	QMainWindow *main_window = reinterpret_cast<QMainWindow*>(obs_frontend_get_main_window());
 	obs_frontend_push_ui_translation(obs_module_get_string);
-	obs_frontend_add_dock(new ObsSceneTreeView(main_window));
+	ObsSceneTreeView *dock = new ObsSceneTreeView(main_window);
+	dock->setObjectName("obs_scene_tree_view");
+	{
+		const char *t = obs_module_text("SceneTreeView.Title");
+		QString title = QString::fromUtf8(t ? t : "");
+		if (title.isEmpty() || title == QLatin1String("SceneTreeView.Title"))
+			title = QStringLiteral("Scene Tree View");
+		dock->setWindowTitle(title);
+	}
+	// Register dock via add_dock_by_id to guarantee Docks menu entry, then detach our QDockWidget shell
+	bool added = false;
+	QWidget *contents = dock->widget();
+	if (contents) {
+		// Detach contents so OBS can reparent without layout warnings
+		dock->setWidget(nullptr);
+		obs_frontend_add_dock_by_id("obs_scene_tree_view",
+			obs_module_text("SceneTreeView.Title"), contents);
+		blog(LOG_INFO, "[%s] registered via add_dock_by_id", obs_module_name());
+		added = true;
+	} else {
+		// As a fallback, try custom_qdock path
+		added = obs_frontend_add_custom_qdock("obs_scene_tree_view", dock);
+		if (added)
+			blog(LOG_INFO, "[%s] registered via add_custom_qdock (fallback)", obs_module_name());
+	}
+	g_stv_dock = dock;
+	g_stv_added = added;
 	obs_frontend_pop_ui_translation();
 
 	return true;
@@ -58,7 +89,7 @@ ObsSceneTreeView::ObsSceneTreeView(QMainWindow *main_window)
       _remove_scene_act(main_window->findChild<QAction*>("actionRemoveScene")),
       _toggle_toolbars_scene_act(main_window->findChild<QAction*>("toggleListboxToolbars"))
 {
-	config_t *const global_config = obs_frontend_get_global_config();
+	config_t *const global_config = obs_frontend_get_user_config();
 	config_set_default_bool(global_config, "SceneTreeView", "ShowSceneIcons", false);
 	config_set_default_bool(global_config, "SceneTreeView", "ShowFolderIcons", false);
 
@@ -66,7 +97,33 @@ ObsSceneTreeView::ObsSceneTreeView(QMainWindow *main_window)
 	assert(this->_remove_scene_act);
 
 	this->_stv_dock.setupUi(this);
-	this->hide();
+	// Ensure dock is initially docked (not floating) after UI has set properties
+	this->setAllowedAreas(Qt::AllDockWidgetAreas);
+	this->setFeatures(QDockWidget::DockWidgetClosable | QDockWidget::DockWidgetMovable | QDockWidget::DockWidgetFloatable);
+	this->setFloating(false);
+
+	// Apply OBS theme classes and toolbar styling to buttons
+	this->_stv_dock.stvAdd->setProperty("class", "btn-tool icon-plus");
+	this->_stv_dock.stvRemove->setProperty("class", "btn-tool icon-minus");
+	this->_stv_dock.stvAddFolder->setProperty("class", "btn-tool icon-folder");
+	// Re-polish to ensure dynamic 'class' property takes effect under OBS theme
+	auto restyle = [](QWidget *w) {
+		if (!w)
+			return;
+		w->setAttribute(Qt::WA_StyledBackground, true);
+		if (w->style()) {
+			w->style()->unpolish(w);
+			w->style()->polish(w);
+		}
+		w->update();
+	};
+	restyle(this->_stv_dock.stvAdd);
+	restyle(this->_stv_dock.stvRemove);
+	restyle(this->_stv_dock.stvAddFolder);
+	// Disable actions until OBS finishes loading to avoid first-click race conditions
+	this->_stv_dock.stvAdd->setEnabled(false);
+	this->_stv_dock.stvRemove->setEnabled(false);
+	this->_stv_dock.stvAddFolder->setEnabled(false);
 
 	this->_stv_dock.stvTree->SetItemModel(&this->_scene_tree_items);
 	this->_stv_dock.stvTree->setDefaultDropAction(Qt::DropAction::MoveAction);
@@ -78,7 +135,11 @@ ObsSceneTreeView::ObsSceneTreeView(QMainWindow *main_window)
 	obs_frontend_add_event_callback(&ObsSceneTreeView::obs_frontend_event_cb, this);
 	obs_frontend_add_save_callback(&ObsSceneTreeView::obs_frontend_save_cb, this);
 
-	QObject::connect(this->_stv_dock.stvAdd, &QToolButton::released, this->_add_scene_act, &QAction::trigger);
+	if (this->_add_scene_act) {
+		QObject::connect(this->_stv_dock.stvAdd, &QToolButton::released, this->_add_scene_act, &QAction::trigger);
+	} else {
+		this->_stv_dock.stvAdd->setEnabled(false);
+	}
 
 	QObject::connect(this->_stv_dock.stvTree->itemDelegate(), SIGNAL(closeEditor(QWidget*,QAbstractItemDelegate::EndEditHint)),
 	                 this, SLOT(on_SceneNameEdited(QWidget*)));
@@ -161,13 +222,14 @@ void ObsSceneTreeView::on_stvAddFolder_clicked()
 		}
 	}
 
-	// Get unique new folder name
+	// Get unique new folder name (gracefully handle missing %1 placeholder in translation)
 	QString format{obs_module_text("SceneTreeView.DefaultFolderName")};
-	int i = 0;
+	if (!format.contains("%1"))
+		format = QStringLiteral("Folder %1");
+	// Start numbering at 1 and choose the lowest available number (fills gaps)
+	int i = 1;
 	QString new_folder_name = format.arg(i);
-	OBSSourceAutoRelease source = nullptr;
-	while(!this->_scene_tree_items.CheckFolderNameUniqueness(new_folder_name, selected))
-	{
+	while (!this->_scene_tree_items.CheckFolderNameUniqueness(new_folder_name, selected)) {
 		new_folder_name = format.arg(++i);
 	}
 
@@ -234,13 +296,13 @@ void ObsSceneTreeView::on_stvTree_customContextMenuRequested(const QPoint &pos)
 //			order.addAction(QTStr("Basic.MainMenu.Edit.Order.MoveUp"),
 //			                main_window, SLOT(on_actionSceneUp_triggered()));
 //			order.addAction(QTStr("Basic.MainMenu.Edit.Order.MoveDown"),
-//			        this, SLOT(on_actionSceneDown_triggered()));
+//		        this, SLOT(on_actionSceneDown_triggered()));
 //			order.addSeparator();
 
 //			order.addAction(QTStr("Basic.MainMenu.Edit.Order.MoveToTop"),
-//			        this, SLOT(MoveSceneToTop()));
+//		        this, SLOT(MoveSceneToTop()));
 //			order.addAction(QTStr("Basic.MainMenu.Edit.Order.MoveToBottom"),
-//				    this, SLOT(MoveSceneToBottom()));
+//		    this, SLOT(MoveSceneToBottom()));
 //			popup.addMenu(&order);
 
 //			popup.addSeparator();
@@ -248,7 +310,7 @@ void ObsSceneTreeView::on_stvTree_customContextMenuRequested(const QPoint &pos)
 //			delete sceneProjectorMenu;
 //			sceneProjectorMenu = new QMenu(QTStr("SceneProjector"));
 //			AddProjectorMenuMonitors(sceneProjectorMenu, this,
-//				         SLOT(OpenSceneProjector()));
+//			         SLOT(OpenSceneProjector()));
 //			popup.addMenu(sceneProjectorMenu);
 
 			QAction *sceneWindow = popup.addAction(QTStr("SceneWindow"),
@@ -303,12 +365,12 @@ void ObsSceneTreeView::on_stvTree_customContextMenuRequested(const QPoint &pos)
 		toggleIconAction->setCheckable(true);
 
 		const auto configName = item->type() == StvItemModel::SCENE ? "ShowSceneIcons" : "ShowFolderIcons";
-		const bool showIcon = config_get_bool(obs_frontend_get_global_config(), "SceneTreeView", configName);
+		const bool showIcon = config_get_bool(obs_frontend_get_user_config(), "SceneTreeView", configName);
 
 		toggleIconAction->setChecked(showIcon);
 
 		auto toggleIcon = [this, showIcon, configName, item]() {
-			config_set_bool(obs_frontend_get_global_config(), "SceneTreeView", configName, !showIcon);
+			config_set_bool(obs_frontend_get_user_config(), "SceneTreeView", configName, !showIcon);
 			this->_scene_tree_items.SetIconVisibility(!showIcon, (StvItemModel::QITEM_TYPE)item->type());
 		};
 
@@ -489,6 +551,26 @@ void ObsSceneTreeView::ObsFrontendEvent(enum obs_frontend_event event)
 	// Update our tree view when scene list was changed
 	if(event == OBS_FRONTEND_EVENT_FINISHED_LOADING)
 	{
+		// Retry dock registration if it failed during module load (e.g., early lifecycle)
+		if (!g_stv_added && g_stv_dock) {
+			bool added = false;
+			// Prefer add_dock_by_id to ensure Docks menu entry
+			QWidget *contents = g_stv_dock->widget();
+			if (contents) {
+				g_stv_dock->setWidget(nullptr);
+				obs_frontend_add_dock_by_id("obs_scene_tree_view",
+					obs_module_text("SceneTreeView.Title"), contents);
+				blog(LOG_INFO, "[%s] retry add_dock_by_id invoked", obs_module_name());
+				added = true;
+			} else {
+				// Fallback: try custom_qdock
+				added = obs_frontend_add_custom_qdock("obs_scene_tree_view", g_stv_dock);
+				if (added)
+					blog(LOG_INFO, "[%s] add_custom_qdock retry succeeded", obs_module_name());
+			}
+			g_stv_added = added;
+		}
+
 		this->_scene_collection_name = obs_frontend_get_current_scene_collection();
 
 		// Load saved scene locations, then add any missing items that weren't saved
@@ -507,6 +589,12 @@ void ObsSceneTreeView::ObsFrontendEvent(enum obs_frontend_event event)
 		QString qss = this->styleSheet();
 		this->setStyleSheet("/* */");
 		this->setStyleSheet(qss);
+
+			// Re-enable toolbar buttons now that OBS has finished loading
+			this->_stv_dock.stvAdd->setEnabled(true);
+			this->_stv_dock.stvRemove->setEnabled(true);
+			this->_stv_dock.stvAddFolder->setEnabled(true);
+
 	}
 	else if(event == OBS_FRONTEND_EVENT_SCENE_LIST_CHANGED)
 		this->UpdateTreeView();
