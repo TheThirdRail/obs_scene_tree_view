@@ -24,6 +24,21 @@ OBS_MODULE_USE_DEFAULT_LOCALE(PROJECT_DATA_FOLDER, "en-US");
 static ObsSceneTreeView *g_stv_dock = nullptr;
 static bool g_stv_added = false;
 
+
+// OBS wrapper-equivalent: sets dynamic "class" and forces stylesheet recalculation
+static inline void setClasses(QWidget *widget, const QString &newClasses)
+{
+	if (!widget)
+		return;
+	if (widget->property("class").toString() != newClasses) {
+		widget->setProperty("class", newClasses);
+		/* force style sheet recalculation */
+		QString qss = widget->styleSheet();
+		widget->setStyleSheet("/* */");
+		widget->setStyleSheet(qss);
+	}
+}
+
 MODULE_EXPORT const char *obs_module_description(void)
 {
 	return obs_module_text("Description");
@@ -102,24 +117,7 @@ ObsSceneTreeView::ObsSceneTreeView(QMainWindow *main_window)
 	this->setFeatures(QDockWidget::DockWidgetClosable | QDockWidget::DockWidgetMovable | QDockWidget::DockWidgetFloatable);
 	this->setFloating(false);
 
-	// Apply OBS theme classes and toolbar styling to buttons
-	this->_stv_dock.stvAdd->setProperty("class", "btn-tool icon-plus");
-	this->_stv_dock.stvRemove->setProperty("class", "btn-tool icon-minus");
-	this->_stv_dock.stvAddFolder->setProperty("class", "btn-tool icon-folder");
-	// Re-polish to ensure dynamic 'class' property takes effect under OBS theme
-	auto restyle = [](QWidget *w) {
-		if (!w)
-			return;
-		w->setAttribute(Qt::WA_StyledBackground, true);
-		if (w->style()) {
-			w->style()->unpolish(w);
-			w->style()->polish(w);
-		}
-		w->update();
-	};
-	restyle(this->_stv_dock.stvAdd);
-	restyle(this->_stv_dock.stvRemove);
-	restyle(this->_stv_dock.stvAddFolder);
+	// Defer applying theme classes; classes are applied in FINISHED_LOADING via setClasses().
 	// Disable actions until OBS finishes loading to avoid first-click race conditions
 	this->_stv_dock.stvAdd->setEnabled(false);
 	this->_stv_dock.stvRemove->setEnabled(false);
@@ -296,13 +294,13 @@ void ObsSceneTreeView::on_stvTree_customContextMenuRequested(const QPoint &pos)
 //			order.addAction(QTStr("Basic.MainMenu.Edit.Order.MoveUp"),
 //			                main_window, SLOT(on_actionSceneUp_triggered()));
 //			order.addAction(QTStr("Basic.MainMenu.Edit.Order.MoveDown"),
-//		        this, SLOT(on_actionSceneDown_triggered()));
+//			        this, SLOT(on_actionSceneDown_triggered()));
 //			order.addSeparator();
 
 //			order.addAction(QTStr("Basic.MainMenu.Edit.Order.MoveToTop"),
-//		        this, SLOT(MoveSceneToTop()));
+//			        this, SLOT(MoveSceneToTop()));
 //			order.addAction(QTStr("Basic.MainMenu.Edit.Order.MoveToBottom"),
-//		    this, SLOT(MoveSceneToBottom()));
+//				    this, SLOT(MoveSceneToBottom()));
 //			popup.addMenu(&order);
 
 //			popup.addSeparator();
@@ -310,7 +308,7 @@ void ObsSceneTreeView::on_stvTree_customContextMenuRequested(const QPoint &pos)
 //			delete sceneProjectorMenu;
 //			sceneProjectorMenu = new QMenu(QTStr("SceneProjector"));
 //			AddProjectorMenuMonitors(sceneProjectorMenu, this,
-//			         SLOT(OpenSceneProjector()));
+//				         SLOT(OpenSceneProjector()));
 //			popup.addMenu(sceneProjectorMenu);
 
 			QAction *sceneWindow = popup.addAction(QTStr("SceneWindow"),
@@ -579,23 +577,89 @@ void ObsSceneTreeView::ObsFrontendEvent(enum obs_frontend_event event)
 
 		this->SelectCurrentScene();
 
-		// We're updating the icons here to allow the main_window to load themes first
-		// Set icons, force style sheet recalculation. Taken from obs source code, qt-wrappers.cpp, setThemeID()
-		QMainWindow *main_window = reinterpret_cast<QMainWindow*>(obs_frontend_get_main_window());
-		this->_stv_dock.stvAdd->setIcon(this->_add_scene_act->icon());
-		this->_stv_dock.stvRemove->setIcon(this->_remove_scene_act->icon());
-		this->_stv_dock.stvAddFolder->setIcon(main_window->property("groupIcon").value<QIcon>());
+		// Apply icons and theme classes; reusable for theme changes and initial load
+		auto applyThemeAndIcons = [this]() {
+			QMainWindow *main_window = reinterpret_cast<QMainWindow*>(obs_frontend_get_main_window());
+			// Base icons (theme may override via qproperty-icon on class selectors)
+			if (this->_add_scene_act)
+				this->_stv_dock.stvAdd->setIcon(this->_add_scene_act->icon());
+			if (this->_remove_scene_act)
+				this->_stv_dock.stvRemove->setIcon(this->_remove_scene_act->icon());
+			this->_stv_dock.stvAddFolder->setIcon(main_window->property("groupIcon").value<QIcon>());
 
-		QString qss = this->styleSheet();
-		this->setStyleSheet("/* */");
-		this->setStyleSheet(qss);
+			// Copy QAction dynamic properties to buttons (mirrors OBS behavior)
+			auto copyProps = [](QAction *act, QWidget *w) {
+				if (!act || !w) return;
+				const auto names = act->dynamicPropertyNames();
+				for (const QByteArray &n : names)
+					w->setProperty(n.constData(), act->property(n.constData()));
+			};
+			copyProps(this->_add_scene_act, this->_stv_dock.stvAdd);
+			copyProps(this->_remove_scene_act, this->_stv_dock.stvRemove);
 
-			// Re-enable toolbar buttons now that OBS has finished loading
-			this->_stv_dock.stvAdd->setEnabled(true);
-			this->_stv_dock.stvRemove->setEnabled(true);
-			this->_stv_dock.stvAddFolder->setEnabled(true);
+			// Compose class strings to enable theme icon overrides + our button styling
+			QString addCls = this->_add_scene_act ? this->_add_scene_act->property("class").toString() : QString();
+			QString remCls = this->_remove_scene_act ? this->_remove_scene_act->property("class").toString() : QString();
+
+			QString addClasses = QStringLiteral("btn-tool");
+			if (!addCls.isEmpty()) addClasses += QStringLiteral(" ") + addCls; else addClasses += QStringLiteral(" icon-plus");
+			QString removeClasses = QStringLiteral("btn-tool");
+			if (!remCls.isEmpty()) removeClasses += QStringLiteral(" ") + remCls; else removeClasses += QStringLiteral(" icon-trash");
+
+			setClasses(this->_stv_dock.stvAdd, addClasses);
+			setClasses(this->_stv_dock.stvRemove, removeClasses);
+			setClasses(this->_stv_dock.stvAddFolder, QStringLiteral("btn-tool"));
+
+			// Force stylesheet recalculation (belt-and-suspenders)
+			QString qss = this->styleSheet();
+			this->setStyleSheet("/* */");
+			this->setStyleSheet(qss);
+		};
+
+		applyThemeAndIcons();
+
+		// Re-enable toolbar buttons now that OBS has finished loading
+		this->_stv_dock.stvAdd->setEnabled(true);
+		this->_stv_dock.stvRemove->setEnabled(true);
+		this->_stv_dock.stvAddFolder->setEnabled(true);
 
 	}
+		else if(event == OBS_FRONTEND_EVENT_THEME_CHANGED)
+		{
+			// Reapply icons and theme classes when user switches themes at runtime
+			QMainWindow *main_window = reinterpret_cast<QMainWindow*>(obs_frontend_get_main_window());
+			if (this->_add_scene_act)
+				this->_stv_dock.stvAdd->setIcon(this->_add_scene_act->icon());
+			if (this->_remove_scene_act)
+				this->_stv_dock.stvRemove->setIcon(this->_remove_scene_act->icon());
+			this->_stv_dock.stvAddFolder->setIcon(main_window->property("groupIcon").value<QIcon>());
+
+			auto copyProps = [](QAction *act, QWidget *w) {
+				if (!act || !w) return;
+				const auto names = act->dynamicPropertyNames();
+				for (const QByteArray &n : names)
+					w->setProperty(n.constData(), act->property(n.constData()));
+			};
+			copyProps(this->_add_scene_act, this->_stv_dock.stvAdd);
+			copyProps(this->_remove_scene_act, this->_stv_dock.stvRemove);
+
+			QString addCls = this->_add_scene_act ? this->_add_scene_act->property("class").toString() : QString();
+			QString remCls = this->_remove_scene_act ? this->_remove_scene_act->property("class").toString() : QString();
+
+			QString addClasses = QStringLiteral("btn-tool");
+			if (!addCls.isEmpty()) addClasses += QStringLiteral(" ") + addCls; else addClasses += QStringLiteral(" icon-plus");
+			QString removeClasses = QStringLiteral("btn-tool");
+			if (!remCls.isEmpty()) removeClasses += QStringLiteral(" ") + remCls; else removeClasses += QStringLiteral(" icon-trash");
+
+			setClasses(this->_stv_dock.stvAdd, addClasses);
+			setClasses(this->_stv_dock.stvRemove, removeClasses);
+			setClasses(this->_stv_dock.stvAddFolder, QStringLiteral("btn-tool"));
+
+			QString qss = this->styleSheet();
+			this->setStyleSheet("/* */");
+			this->setStyleSheet(qss);
+		}
+
 	else if(event == OBS_FRONTEND_EVENT_SCENE_LIST_CHANGED)
 		this->UpdateTreeView();
 	else if(event == OBS_FRONTEND_EVENT_SCENE_CHANGED || event == OBS_FRONTEND_EVENT_PREVIEW_SCENE_CHANGED)
