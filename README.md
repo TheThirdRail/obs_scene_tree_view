@@ -14,86 +14,85 @@ A powerful OBS Studio plugin that adds a hierarchical scene tree view dock, enab
 - **Scene Collection Support**: Automatically saves and restores scene tree structure with scene collections
 - **Cross-Platform**: Works on Windows, macOS, and Linux
 
-## Requirements
+## Prerequisites (Windows)
 
-### Minimum Versions
-- **OBS Studio**: 32.0.0 or later
-- **Qt**: 6.x (included with OBS 32+)
-- **CMake**: 3.25 or later
-- **C++ Standard**: C++17 or later
+- Windows 10/11 (64-bit)
+- OBS Studio 32.0.1+ installed (runtime)
+- CMake 3.28+
+- Visual Studio 2022 (MSVC, v143) with Desktop development with C++
+- Qt 6.8.3 EXACT (provided by the OBS deps pack below)
+- Git
+- OBS source and dependency pack (SDK paths for headers/libs):
+  - OBS source: `C:\OBS-SDK\obs-studio-src`
+  - OBS deps (Qt 6.8.3 pack): `C:\OBS-SDK\obs-studio-src\.deps\obs-deps-qt6-2025-08-23-x64`
 
-### Platform-Specific Requirements
+Notes:
+- Qt version must match the OBS runtime’s Qt exactly. For OBS 32.0.1, use Qt 6.8.3.
+- Mixing Qt versions (e.g., building against 6.9.x while running OBS with 6.8.3) will prevent the plugin from loading.
 
-#### Windows
-- Visual Studio 2019 or later (with C++ workload)
-- OBS Studio 32 SDK
+## Installation from Release ZIP (Windows)
 
-#### macOS
-- Xcode 13 or later
-- OBS Studio 32 SDK
-- Supports both Intel (x86_64) and Apple Silicon (arm64)
+For end users, the easiest way to install is with a pre-built release ZIP that contains only the plugin binaries.
 
-#### Linux
-- GCC 9+ or Clang 10+
-- OBS Studio 32 development headers
-- Qt 6 development headers
+1) Download the latest release ZIP from this repository's GitHub Releases page.
+   - The ZIP includes: `obs_scene_tree_view.dll` and `obs_scene_tree_view.pdb`
+2) Close OBS Studio if it is running.
+3) Extract the ZIP to a temporary folder.
+4) Copy the following files to the OBS 64-bit plugins folder:
+   - `obs_scene_tree_view.dll`
+   - `obs_scene_tree_view.pdb`
+   - Destination: `C:\Program Files\obs-studio\obs-plugins\64bit\`
+   - Note: Copying into `Program Files` may require administrator privileges.
+     - Example (PowerShell, run as Administrator):
+       ```powershell
+       $dest = "C:\Program Files\obs-studio\obs-plugins\64bit"
+       Copy-Item ".\obs_scene_tree_view.dll" $dest -Force
+       Copy-Item ".\obs_scene_tree_view.pdb" $dest -Force
+       ```
+5) Launch OBS Studio and verify the plugin loaded:
+   - View → Docks → Scene Tree View (check it)
+   - If it doesn't appear: View → Docks → Reset UI, then re-check the dock
+6) If OBS was open during the copy, restart OBS to load the new plugin binaries.
 
-## Installation
+## Installation (Windows)
 
-### Pre-built Binaries
+After building, install the plugin into the system OBS installation:
 
-Visit the [Releases](https://github.com/DigitOtter/obs_scene_tree_view/releases) page to download pre-built binaries for your platform.
-
-#### Windows
-1. Download the latest Windows release
-2. Extract the contents to your OBS plugins directory:
-   - `%APPDATA%\obs-studio\plugins\obs_scene_tree_view\bin\64bit\`
-3. Restart OBS Studio
-4. Enable the plugin in OBS: Tools → Plugins → Scene Tree View
-
-#### macOS
-1. Download the latest macOS release
-2. Extract the contents to your OBS plugins directory:
-   - `~/Library/Application Support/obs-studio/plugins/obs_scene_tree_view/bin/`
-3. Restart OBS Studio
-4. Enable the plugin in OBS: Tools → Plugins → Scene Tree View
-
-#### Linux
-
-##### Arch Linux
-Available via the `obs-scene-tree-view-git` AUR package:
-```bash
-pikaur -S obs-scene-tree-view-git
-```
-
-##### Other Distributions
-1. Download the latest Linux release
-2. Extract to your OBS plugins directory:
-   - `~/.config/obs-studio/plugins/obs_scene_tree_view/lib/`
-3. Restart OBS Studio
-4. Enable the plugin in OBS: Tools → Plugins → Scene Tree View
+1) Close OBS Studio
+2) Copy the built DLL (v0.1.5) to the 64-bit plugins folder:
+   - From: `d:\Coding\obs-plugins\obs_scene_tree_view\build_qt683\RelWithDebInfo\obs_scene_tree_view.dll`
+   - To:   `C:\Program Files\obs-studio\obs-plugins\64bit\obs_scene_tree_view.dll`
+3) Copy locale files (for translated titles/strings):
+   - From: `d:\Coding\obs-plugins\obs_scene_tree_view\data\locale\`
+   - To:   `C:\Program Files\obs-studio\data\obs-plugins\obs_scene_tree_view\locale\`
+   - Example (PowerShell, run as Admin):
+     ```powershell
+     robocopy "data\locale" "C:\Program Files\obs-studio\data\obs-plugins\obs_scene_tree_view\locale" /E
+     ```
+4) Launch OBS Studio and enable the dock:
+   - View → Docks → Scene Tree View (check it)
+5) If you don’t see it immediately, use View → Docks → Reset UI once, then re-check the dock.
 
 ## Building from Source
 
 ### Windows
 
 ```powershell
-# Set up environment variables
-$OBS_SDK_DIR = "C:\path\to\obs-studio-32-sdk"
+# Paths (adjust if different)
+$env:OBS_SRC  = "C:\OBS-SDK\obs-studio-src"
+$env:OBS_DEPS = "$env:OBS_SRC\.deps\obs-deps-qt6-2025-08-23-x64"
+$env:Qt6_DIR  = "$env:OBS_DEPS\qt6\lib\cmake\Qt6"
+$env:CMAKE_PREFIX_PATH = "$env:OBS_DEPS;$env:OBS_DEPS\qt6;$env:OBS_DEPS\obs-studio;$env:OBS_DEPS\obs-studio\lib\cmake"
 
-# Create build directory
-mkdir build
-cd build
+# Configure (Visual Studio 2022, x64)
+cmake -S . -B build_qt683 -G "Visual Studio 17 2022" -A x64 `
+  -DQt6_DIR="$env:Qt6_DIR" `
+  -DCMAKE_PREFIX_PATH="$env:CMAKE_PREFIX_PATH"
 
-# Configure with CMake
-cmake -S .. -B . -G "Visual Studio 16 2019" -A x64 `
-  -DOBS_SDK_DIR="$OBS_SDK_DIR"
-
-# Build
-cmake --build . --config Release
-
-# Install (optional)
-cmake --install . --config Release
+# Build (choose one configuration)
+cmake --build build_qt683 --config RelWithDebInfo -j 8
+cmake --build build_qt683 --config Release       -j 8
+cmake --build build_qt683 --config Debug         -j 8
 ```
 
 ### macOS
@@ -203,40 +202,39 @@ sudo cmake --install . --config Release
 **Problem**: The Scene Tree View dock doesn't appear in the Docks menu.
 
 **Solutions**:
-1. Verify OBS Studio version is 32.0.0 or later:
-   - Help → About OBS Studio
-2. Check that the plugin is installed in the correct location:
-   - Windows: `%APPDATA%\obs-studio\plugins\obs_scene_tree_view\`
-   - macOS: `~/Library/Application Support/obs-studio/plugins/obs_scene_tree_view/`
-   - Linux: `~/.config/obs-studio/plugins/obs_scene_tree_view/`
-3. Check OBS logs for errors:
-   - Help → Log Files
-4. Restart OBS Studio
+1. Verify the DLL is installed to the system OBS folder (not AppData):
+   - `C:\Program Files\obs-studio\obs-plugins\64bit\obs_scene_tree_view.dll`
+   - Remove any older copies from `%APPDATA%\obs-studio\plugins\...` that could shadow the system plugin.
+2. In OBS, enable the dock:
+   - View → Docks → Scene Tree View (check it)
+   - If missing: View → Docks → Reset UI, then re-check the dock entry.
+3. Check OBS logs for clues (Help → Log Files):
+   - Look for lines containing `obs_scene_tree_view` and `registered via`.
+4. Ensure OBS Studio is 32.0.1+ (Help → About OBS Studio).
 
 ### Build Errors
 
-**Problem**: CMake configuration fails with "OBS SDK not found"
+**Problem**: CMake cannot find OBS libraries (libobs/obs-frontend-api)
+
+**Solutions (Windows)**:
+1. Ensure you set these before configuring:
+   - `$env:OBS_SRC = "C:\OBS-SDK\obs-studio-src"`
+   - `$env:OBS_DEPS = "$env:OBS_SRC\.deps\obs-deps-qt6-2025-08-23-x64"`
+   - `$env:CMAKE_PREFIX_PATH = "$env:OBS_DEPS;$env:OBS_DEPS\qt6;$env:OBS_DEPS\obs-studio;$env:OBS_DEPS\obs-studio\lib\cmake"`
+2. Re-run CMake configure (see Windows build section).
+3. If still failing, verify the deps pack exists and contains `lib/cmake/libobs` and `lib/cmake/obs-frontend-api`.
+
+**Problem**: Qt version mismatch (plugin loads fails or dock missing without clear error)
 
 **Solutions**:
-1. Verify OBS_SDK_DIR environment variable is set correctly
-2. Ensure the SDK path contains `include/obs.h`
-3. Download the correct OBS 32 SDK from [OBS GitHub Releases](https://github.com/obsproject/obs-studio/releases)
-
-**Problem**: Compilation errors related to Qt6
-
-**Solutions**:
-1. Ensure Qt 6 development headers are installed
-2. On Linux, install: `qt6-base-dev` (Ubuntu/Debian) or `qt6-base-devel` (Fedora)
-3. Verify CMake can find Qt6: `cmake --find-package Qt6`
+1. OBS 32.0.1 uses Qt 6.8.3. Build the plugin against Qt 6.8.3 exactly (from the obs-deps pack).
+2. Confirm CMake is using `-DQt6_DIR="C:\OBS-SDK\obs-studio-src\.deps\obs-deps-qt6-2025-08-23-x64\qt6\lib\cmake\Qt6"`.
 
 **Problem**: "C++17 or later required" error
 
 **Solutions**:
-1. Update your compiler:
-   - Windows: Visual Studio 2019 or later
-   - macOS: Xcode 13 or later
-   - Linux: GCC 9+ or Clang 10+
-2. Verify CMake is using the correct compiler
+1. Use Visual Studio 2022 (v143) and CMake 3.28+.
+2. Ensure your Kit/Generator is "Visual Studio 17 2022" and `-A x64`.
 
 ### Runtime Issues
 

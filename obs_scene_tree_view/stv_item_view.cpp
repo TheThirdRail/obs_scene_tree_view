@@ -36,7 +36,7 @@ void StvItemView::mouseDoubleClickEvent(QMouseEvent *event)
 	if(obs_frontend_preview_enabled())
 	{
 		// If preview mode enabled, check whether the option to transition output scenes on double-click is active
-		const bool transition_enabled = config_get_bool(obs_frontend_get_global_config(),
+		const bool transition_enabled = config_get_bool(obs_frontend_get_app_config(),
 		                                                "BasicWindow", "TransitionOnDoubleClick");
 
 		if(transition_enabled)

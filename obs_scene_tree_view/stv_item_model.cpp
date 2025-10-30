@@ -15,7 +15,7 @@ StvFolderItem::StvFolderItem(const QString &text)
 	this->setDropEnabled(true);
 
 	QMainWindow *main_window = reinterpret_cast<QMainWindow*>(obs_frontend_get_main_window());
-	QIcon icon = config_get_bool(obs_frontend_get_global_config(), "SceneTreeView", "ShowFolderIcons") ?
+	QIcon icon = config_get_bool(obs_frontend_get_user_config(), "SceneTreeView", "ShowFolderIcons") ?
 	            main_window->property("groupIcon").value<QIcon>() :
 	            QIcon();
 	this->setIcon(icon);
@@ -32,7 +32,7 @@ StvSceneItem::StvSceneItem(const QString &text, obs_weak_source_t *weak)
 	this->setData(QVariant::fromValue(obs_weak_source_ptr({weak})), StvItemModel::OBS_SCENE);
 
 	QMainWindow *main_window = reinterpret_cast<QMainWindow*>(obs_frontend_get_main_window());
-	QIcon icon = config_get_bool(obs_frontend_get_global_config(), "SceneTreeView", "ShowSceneIcons") ?
+	QIcon icon = config_get_bool(obs_frontend_get_user_config(), "SceneTreeView", "ShowSceneIcons") ?
 	            main_window->property("sceneIcon").value<QIcon>() :
 	            QIcon();
 	this->setIcon(icon);
