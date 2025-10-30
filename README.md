@@ -30,6 +30,30 @@ Notes:
 - Qt version must match the OBS runtime’s Qt exactly. For OBS 32.0.1, use Qt 6.8.3.
 - Mixing Qt versions (e.g., building against 6.9.x while running OBS with 6.8.3) will prevent the plugin from loading.
 
+## Installation from Release ZIP (Windows)
+
+For end users, the easiest way to install is with a pre-built release ZIP that contains only the plugin binaries.
+
+1) Download the latest release ZIP from this repository's GitHub Releases page.
+   - The ZIP includes: `obs_scene_tree_view.dll` and `obs_scene_tree_view.pdb`
+2) Close OBS Studio if it is running.
+3) Extract the ZIP to a temporary folder.
+4) Copy the following files to the OBS 64-bit plugins folder:
+   - `obs_scene_tree_view.dll`
+   - `obs_scene_tree_view.pdb`
+   - Destination: `C:\Program Files\obs-studio\obs-plugins\64bit\`
+   - Note: Copying into `Program Files` may require administrator privileges.
+     - Example (PowerShell, run as Administrator):
+       ```powershell
+       $dest = "C:\Program Files\obs-studio\obs-plugins\64bit"
+       Copy-Item ".\obs_scene_tree_view.dll" $dest -Force
+       Copy-Item ".\obs_scene_tree_view.pdb" $dest -Force
+       ```
+5) Launch OBS Studio and verify the plugin loaded:
+   - View → Docks → Scene Tree View (check it)
+   - If it doesn't appear: View → Docks → Reset UI, then re-check the dock
+6) If OBS was open during the copy, restart OBS to load the new plugin binaries.
+
 ## Installation (Windows)
 
 After building, install the plugin into the system OBS installation:
@@ -282,3 +306,4 @@ For issues, questions, or suggestions:
    - Detailed description of the problem
    - Steps to reproduce
    - OBS log file (Help → Log Files)
+
