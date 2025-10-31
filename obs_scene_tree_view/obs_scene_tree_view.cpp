@@ -122,6 +122,10 @@ ObsSceneTreeView::ObsSceneTreeView(QMainWindow *main_window)
 	this->_stv_dock.stvAdd->setEnabled(false);
 	this->_stv_dock.stvRemove->setEnabled(false);
 	this->_stv_dock.stvAddFolder->setEnabled(false);
+	if (this->_stv_dock.stvMoveUp)
+		this->_stv_dock.stvMoveUp->setEnabled(false);
+	if (this->_stv_dock.stvMoveDown)
+		this->_stv_dock.stvMoveDown->setEnabled(false);
 
 	this->_stv_dock.stvTree->SetItemModel(&this->_scene_tree_items);
 	this->_stv_dock.stvTree->setDefaultDropAction(Qt::DropAction::MoveAction);
@@ -133,11 +137,21 @@ ObsSceneTreeView::ObsSceneTreeView(QMainWindow *main_window)
 	obs_frontend_add_event_callback(&ObsSceneTreeView::obs_frontend_event_cb, this);
 	obs_frontend_add_save_callback(&ObsSceneTreeView::obs_frontend_save_cb, this);
 
-	if (this->_add_scene_act) {
-		QObject::connect(this->_stv_dock.stvAdd, &QToolButton::released, this->_add_scene_act, &QAction::trigger);
-	} else {
-		this->_stv_dock.stvAdd->setEnabled(false);
-	}
+	// Resolve move up/down actions from main window for icon parity (optional)
+this->_move_scene_up_act = main_window->findChild<QAction*>("actionMoveSceneUp");
+this->_move_scene_down_act = main_window->findChild<QAction*>("actionMoveSceneDown");
+
+if (this->_add_scene_act) {
+	QObject::connect(this->_stv_dock.stvAdd, &QToolButton::released, this->_add_scene_act, &QAction::trigger);
+} else {
+	this->_stv_dock.stvAdd->setEnabled(false);
+}
+
+// Wire new move buttons
+if (this->_stv_dock.stvMoveUp)
+	QObject::connect(this->_stv_dock.stvMoveUp, &QToolButton::released, this, &ObsSceneTreeView::on_stvMoveUp_released);
+if (this->_stv_dock.stvMoveDown)
+	QObject::connect(this->_stv_dock.stvMoveDown, &QToolButton::released, this, &ObsSceneTreeView::on_stvMoveDown_released);
 
 	QObject::connect(this->_stv_dock.stvTree->itemDelegate(), SIGNAL(closeEditor(QWidget*,QAbstractItemDelegate::EndEditHint)),
 	                 this, SLOT(on_SceneNameEdited(QWidget*)));
@@ -146,6 +160,11 @@ ObsSceneTreeView::ObsSceneTreeView(QMainWindow *main_window)
 	QObject::connect(this->_toggle_toolbars_scene_act, &QAction::triggered, this, &ObsSceneTreeView::on_toggleListboxToolbars);
 
 	this->_stv_dock.stvTree->setModel(&(this->_scene_tree_items));
+	// Update enable/disable state when selection changes
+	if (this->_stv_dock.stvTree->selectionModel())
+		QObject::connect(this->_stv_dock.stvTree->selectionModel(), &QItemSelectionModel::selectionChanged, this, &ObsSceneTreeView::UpdateMoveButtonsEnabled);
+	// Also compute initial state
+	this->UpdateMoveButtonsEnabled();
 }
 
 ObsSceneTreeView::~ObsSceneTreeView()
@@ -218,6 +237,8 @@ void ObsSceneTreeView::on_stvAddFolder_clicked()
 
 			selected = this->_scene_tree_items.GetParentOrRoot(selected->index());
 		}
+
+
 	}
 
 	// Get unique new folder name (gracefully handle missing %1 placeholder in translation)
@@ -249,6 +270,60 @@ void ObsSceneTreeView::on_stvRemove_released()
 			this->RemoveFolder(selected);
 	}
 }
+
+void ObsSceneTreeView::on_stvMoveUp_released()
+{
+	QModelIndex idx = this->_stv_dock.stvTree->currentIndex();
+	if (!idx.isValid())
+		return;
+	const int oldRow = idx.row();
+	QStandardItem *parent_item = this->_scene_tree_items.GetParentOrRoot(idx);
+	if (this->_scene_tree_items.MoveIndexByOne(idx, -1)) {
+		this->SaveSceneTree(this->_scene_collection_name);
+		if (parent_item && oldRow - 1 >= 0) {
+			QModelIndex newIdx = parent_item->child(oldRow - 1)->index();
+			this->_stv_dock.stvTree->setCurrentIndex(newIdx);
+		}
+		this->UpdateMoveButtonsEnabled();
+	}
+}
+
+void ObsSceneTreeView::on_stvMoveDown_released()
+{
+	QModelIndex idx = this->_stv_dock.stvTree->currentIndex();
+	if (!idx.isValid())
+		return;
+	const int oldRow = idx.row();
+	QStandardItem *parent_item = this->_scene_tree_items.GetParentOrRoot(idx);
+	if (this->_scene_tree_items.MoveIndexByOne(idx, +1)) {
+		this->SaveSceneTree(this->_scene_collection_name);
+		if (parent_item && oldRow + 1 < parent_item->rowCount()) {
+			QModelIndex newIdx = parent_item->child(oldRow + 1)->index();
+			this->_stv_dock.stvTree->setCurrentIndex(newIdx);
+		}
+		this->UpdateMoveButtonsEnabled();
+	}
+}
+
+void ObsSceneTreeView::UpdateMoveButtonsEnabled()
+{
+	bool enableUp = false, enableDown = false;
+	QModelIndex idx = this->_stv_dock.stvTree->currentIndex();
+	if (idx.isValid()) {
+		QStandardItem *parent_item = this->_scene_tree_items.GetParentOrRoot(idx);
+		if (parent_item) {
+			const int row = idx.row();
+			const int count = parent_item->rowCount();
+			enableUp = row > 0;
+			enableDown = row >= 0 && row < (count - 1);
+		}
+	}
+	if (this->_stv_dock.stvMoveUp)
+		this->_stv_dock.stvMoveUp->setEnabled(enableUp);
+	if (this->_stv_dock.stvMoveDown)
+		this->_stv_dock.stvMoveDown->setEnabled(enableDown);
+}
+
 
 void ObsSceneTreeView::on_stvTree_customContextMenuRequested(const QPoint &pos)
 {
@@ -586,6 +661,10 @@ void ObsSceneTreeView::ObsFrontendEvent(enum obs_frontend_event event)
 			if (this->_remove_scene_act)
 				this->_stv_dock.stvRemove->setIcon(this->_remove_scene_act->icon());
 			this->_stv_dock.stvAddFolder->setIcon(main_window->property("groupIcon").value<QIcon>());
+			if (this->_move_scene_up_act && this->_stv_dock.stvMoveUp)
+				this->_stv_dock.stvMoveUp->setIcon(this->_move_scene_up_act->icon());
+			if (this->_move_scene_down_act && this->_stv_dock.stvMoveDown)
+				this->_stv_dock.stvMoveDown->setIcon(this->_move_scene_down_act->icon());
 
 			// Copy QAction dynamic properties to buttons (mirrors OBS behavior)
 			auto copyProps = [](QAction *act, QWidget *w) {
@@ -596,19 +675,29 @@ void ObsSceneTreeView::ObsFrontendEvent(enum obs_frontend_event event)
 			};
 			copyProps(this->_add_scene_act, this->_stv_dock.stvAdd);
 			copyProps(this->_remove_scene_act, this->_stv_dock.stvRemove);
+			copyProps(this->_move_scene_up_act, this->_stv_dock.stvMoveUp);
+			copyProps(this->_move_scene_down_act, this->_stv_dock.stvMoveDown);
 
 			// Compose class strings to enable theme icon overrides + our button styling
 			QString addCls = this->_add_scene_act ? this->_add_scene_act->property("class").toString() : QString();
 			QString remCls = this->_remove_scene_act ? this->_remove_scene_act->property("class").toString() : QString();
+			QString upCls = this->_move_scene_up_act ? this->_move_scene_up_act->property("class").toString() : QString();
+			QString downCls = this->_move_scene_down_act ? this->_move_scene_down_act->property("class").toString() : QString();
 
 			QString addClasses = QStringLiteral("btn-tool");
 			if (!addCls.isEmpty()) addClasses += QStringLiteral(" ") + addCls; else addClasses += QStringLiteral(" icon-plus");
 			QString removeClasses = QStringLiteral("btn-tool");
 			if (!remCls.isEmpty()) removeClasses += QStringLiteral(" ") + remCls; else removeClasses += QStringLiteral(" icon-trash");
+			QString upClasses = QStringLiteral("btn-tool");
+			if (!upCls.isEmpty()) upClasses += QStringLiteral(" ") + upCls; else upClasses += QStringLiteral(" icon-up");
+			QString downClasses = QStringLiteral("btn-tool");
+			if (!downCls.isEmpty()) downClasses += QStringLiteral(" ") + downCls; else downClasses += QStringLiteral(" icon-down");
 
 			setClasses(this->_stv_dock.stvAdd, addClasses);
 			setClasses(this->_stv_dock.stvRemove, removeClasses);
 			setClasses(this->_stv_dock.stvAddFolder, QStringLiteral("btn-tool"));
+			setClasses(this->_stv_dock.stvMoveUp, upClasses);
+			setClasses(this->_stv_dock.stvMoveDown, downClasses);
 
 			// Force stylesheet recalculation (belt-and-suspenders)
 			QString qss = this->styleSheet();
@@ -622,6 +711,11 @@ void ObsSceneTreeView::ObsFrontendEvent(enum obs_frontend_event event)
 		this->_stv_dock.stvAdd->setEnabled(true);
 		this->_stv_dock.stvRemove->setEnabled(true);
 		this->_stv_dock.stvAddFolder->setEnabled(true);
+		if (this->_stv_dock.stvMoveUp)
+			this->_stv_dock.stvMoveUp->setEnabled(true);
+		if (this->_stv_dock.stvMoveDown)
+			this->_stv_dock.stvMoveDown->setEnabled(true);
+		this->UpdateMoveButtonsEnabled();
 
 	}
 		else if(event == OBS_FRONTEND_EVENT_THEME_CHANGED)
@@ -633,6 +727,10 @@ void ObsSceneTreeView::ObsFrontendEvent(enum obs_frontend_event event)
 			if (this->_remove_scene_act)
 				this->_stv_dock.stvRemove->setIcon(this->_remove_scene_act->icon());
 			this->_stv_dock.stvAddFolder->setIcon(main_window->property("groupIcon").value<QIcon>());
+			if (this->_move_scene_up_act && this->_stv_dock.stvMoveUp)
+				this->_stv_dock.stvMoveUp->setIcon(this->_move_scene_up_act->icon());
+			if (this->_move_scene_down_act && this->_stv_dock.stvMoveDown)
+				this->_stv_dock.stvMoveDown->setIcon(this->_move_scene_down_act->icon());
 
 			auto copyProps = [](QAction *act, QWidget *w) {
 				if (!act || !w) return;
@@ -642,18 +740,28 @@ void ObsSceneTreeView::ObsFrontendEvent(enum obs_frontend_event event)
 			};
 			copyProps(this->_add_scene_act, this->_stv_dock.stvAdd);
 			copyProps(this->_remove_scene_act, this->_stv_dock.stvRemove);
+			copyProps(this->_move_scene_up_act, this->_stv_dock.stvMoveUp);
+			copyProps(this->_move_scene_down_act, this->_stv_dock.stvMoveDown);
 
 			QString addCls = this->_add_scene_act ? this->_add_scene_act->property("class").toString() : QString();
 			QString remCls = this->_remove_scene_act ? this->_remove_scene_act->property("class").toString() : QString();
+			QString upCls = this->_move_scene_up_act ? this->_move_scene_up_act->property("class").toString() : QString();
+			QString downCls = this->_move_scene_down_act ? this->_move_scene_down_act->property("class").toString() : QString();
 
 			QString addClasses = QStringLiteral("btn-tool");
 			if (!addCls.isEmpty()) addClasses += QStringLiteral(" ") + addCls; else addClasses += QStringLiteral(" icon-plus");
 			QString removeClasses = QStringLiteral("btn-tool");
 			if (!remCls.isEmpty()) removeClasses += QStringLiteral(" ") + remCls; else removeClasses += QStringLiteral(" icon-trash");
+			QString upClasses = QStringLiteral("btn-tool");
+			if (!upCls.isEmpty()) upClasses += QStringLiteral(" ") + upCls; else upClasses += QStringLiteral(" icon-up");
+			QString downClasses = QStringLiteral("btn-tool");
+			if (!downCls.isEmpty()) downClasses += QStringLiteral(" ") + downCls; else downClasses += QStringLiteral(" icon-down");
 
 			setClasses(this->_stv_dock.stvAdd, addClasses);
 			setClasses(this->_stv_dock.stvRemove, removeClasses);
 			setClasses(this->_stv_dock.stvAddFolder, QStringLiteral("btn-tool"));
+			setClasses(this->_stv_dock.stvMoveUp, upClasses);
+			setClasses(this->_stv_dock.stvMoveDown, downClasses);
 
 			QString qss = this->styleSheet();
 			this->setStyleSheet("/* */");

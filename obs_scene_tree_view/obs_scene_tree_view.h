@@ -34,6 +34,11 @@ class ObsSceneTreeView
 		void on_stvAddFolder_clicked();
 		void on_stvRemove_released();
 
+
+			void on_stvMoveUp_released();
+			void on_stvMoveDown_released();
+			void UpdateMoveButtonsEnabled();
+
 		// Copied from OBS, OBSBasic::on_scenes_customContextMenuRequested()
 		void on_stvTree_customContextMenuRequested(const QPoint &pos);
 
@@ -43,6 +48,10 @@ class ObsSceneTreeView
 		QAction *_add_scene_act = nullptr;
 		QAction *_remove_scene_act = nullptr;
 		QAction *_toggle_toolbars_scene_act = nullptr;
+
+			QAction *_move_scene_up_act = nullptr;
+			QAction *_move_scene_down_act = nullptr;
+
 
 		std::unique_ptr<QMenu> _per_scene_transition_menu;
 
