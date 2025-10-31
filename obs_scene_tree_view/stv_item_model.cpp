@@ -393,6 +393,45 @@ bool StvItemModel::IsManagedScene(obs_source_t *scene_source) const
 					obs_data_get_bool(settings, "cy") == this->_scene_size.cy*/;
 }
 
+
+bool StvItemModel::MoveIndexByOne(const QModelIndex &index, int delta)
+{
+	if (!index.isValid())
+		return false;
+
+	QStandardItem *item = this->itemFromIndex(index);
+	if (!item)
+		return false;
+
+	QStandardItem *parent_item = this->itemFromIndex(index.parent());
+	if (!parent_item)
+		parent_item = this->invisibleRootItem();
+
+	const int row = index.row();
+	const int rowCount = parent_item->rowCount();
+	const int target = row + delta;
+	if (target < 0 || target >= rowCount)
+		return false;
+
+	if (item->type() == SCENE) {
+		obs_weak_source_t *weak = item->data(OBS_SCENE).value<obs_weak_source_ptr>().ptr;
+		this->MoveSceneItem(weak, target, parent_item);
+	} else if (item->type() == FOLDER) {
+		this->MoveSceneFolder(item, target, parent_item);
+	} else {
+		return false;
+	}
+
+	// Remove the original row. When inserting below (delta>0), original stays at 'row'.
+	// When inserting above (delta<0), original shifts down to 'row+1'.
+	if (delta > 0)
+		parent_item->removeRow(row);
+	else
+		parent_item->removeRow(row + 1);
+
+	return true;
+}
+
 void StvItemModel::MoveSceneItem(obs_weak_source_t *source, int row, QStandardItem *parent_item)
 {
 	if(const auto scene_it = this->_scenes_in_tree.find(source); scene_it != this->_scenes_in_tree.end())

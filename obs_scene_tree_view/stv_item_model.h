@@ -91,6 +91,9 @@ class StvItemModel
 		bool IsManagedScene(obs_scene_t *scene) const;
 		bool IsManagedScene(obs_source_t *scene_source) const;
 
+
+			bool MoveIndexByOne(const QModelIndex &index, int delta);
+
 	private:
 		struct mime_item_data_t
 		{
