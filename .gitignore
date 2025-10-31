@@ -10,3 +10,13 @@ Makefile
 cmake_install.cmake
 install_manifest.txt
 
+
+# Build directories (all variants)
+/build*/
+
+# Tooling and editor artifacts
+/.augment/
+*.code-workspace
+
+# Windows artifacts
+nul
