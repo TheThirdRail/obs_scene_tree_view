@@ -331,24 +331,24 @@ void ObsSceneTreeView::on_stvTree_customContextMenuRequested(const QPoint &pos)
 			QAction *multiviewAction = popup.addAction(QTStr("ShowInMultiview"));
 
 			OBSSourceAutoRelease source = this->_scene_tree_items.GetCurrentScene();
-			OBSDataAutoRelease data = obs_source_get_private_settings(source);
+			OBSDataAutoRelease sceneSettings = obs_source_get_private_settings(source);
 
-			obs_data_set_default_bool(data, "show_in_multiview", true);
-			bool show = obs_data_get_bool(data, "show_in_multiview");
+			obs_data_set_default_bool(sceneSettings, "show_in_multiview", true);
+			bool show = obs_data_get_bool(sceneSettings, "show_in_multiview");
 
 			multiviewAction->setCheckable(true);
 			multiviewAction->setChecked(show);
 
-			auto showInMultiview = [main_window](OBSData data) {
+			auto showInMultiview = [main_window](OBSData settings) {
 				bool show =
-				    obs_data_get_bool(data, "show_in_multiview");
-				obs_data_set_bool(data, "show_in_multiview", !show);
+				    obs_data_get_bool(settings, "show_in_multiview");
+				obs_data_set_bool(settings, "show_in_multiview", !show);
 				// Workaround because OBSProjector::UpdateMultiviewProjectors() isn't available to modules
 				QMetaObject::invokeMethod(main_window, "ScenesReordered");
 			};
 
 			connect(multiviewAction, &QAction::triggered,
-			    std::bind(showInMultiview, data.Get()));
+			    std::bind(showInMultiview, sceneSettings.Get()));
 
 			copyFilters->setEnabled(obs_source_filter_count(source) > 0);
 		}
@@ -460,12 +460,12 @@ QMenu *ObsSceneTreeView::CreatePerSceneTransitionMenu(QMainWindow *main_window)
 	QMenu *menu = new QMenu(QTStr("TransitionOverride"));
 	QAction *action;
 
-	OBSDataAutoRelease data = obs_source_get_private_settings(scene);
+	OBSDataAutoRelease sceneSettings = obs_source_get_private_settings(scene);
 
-	obs_data_set_default_int(data, "transition_duration", 300);
+	obs_data_set_default_int(sceneSettings, "transition_duration", 300);
 
-	const char *curTransition = obs_data_get_string(data, "transition");
-	int curDuration = (int)obs_data_get_int(data, "transition_duration");
+	const char *curTransition = obs_data_get_string(sceneSettings, "transition");
+	int curDuration = (int)obs_data_get_int(sceneSettings, "transition_duration");
 
 	QSpinBox *duration = new QSpinBox(menu);
 	duration->setMinimum(50);
@@ -481,11 +481,11 @@ QMenu *ObsSceneTreeView::CreatePerSceneTransitionMenu(QMainWindow *main_window)
 	auto setTransition = [this, combo](QAction *action) {
 		int idx = action->property("transition_index").toInt();
 		OBSSourceAutoRelease scene = this->_scene_tree_items.GetCurrentScene();
-		OBSDataAutoRelease data =
+		OBSDataAutoRelease sceneSettings =
 		    obs_source_get_private_settings(scene);
 
 		if (idx == -1) {
-			obs_data_set_string(data, "transition", "");
+			obs_data_set_string(sceneSettings, "transition", "");
 			return;
 		}
 
@@ -494,16 +494,16 @@ QMenu *ObsSceneTreeView::CreatePerSceneTransitionMenu(QMainWindow *main_window)
 		if (tr)
 		{
 			const char *name = obs_source_get_name(tr);
-			obs_data_set_string(data, "transition", name);
+			obs_data_set_string(sceneSettings, "transition", name);
 		}
 	};
 
 	auto setDuration = [this](int duration) {
 		OBSSourceAutoRelease scene = this->_scene_tree_items.GetCurrentScene();
-		OBSDataAutoRelease data =
+		OBSDataAutoRelease sceneSettings =
 		    obs_source_get_private_settings(scene);
 
-		obs_data_set_int(data, "transition_duration", duration);
+		obs_data_set_int(sceneSettings, "transition_duration", duration);
 	};
 
 	connect(duration, (void (QSpinBox::*)(int)) & QSpinBox::valueChanged, setDuration);

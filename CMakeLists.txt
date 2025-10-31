@@ -19,7 +19,9 @@ if(NOT DEFINED BUILD_IN_OBS)
 endif()
 
 # Include OBS dependencies configuration (sets CMAKE_PREFIX_PATH)
-include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/obs-dependencies.cmake")
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/cmake/obs-dependencies.cmake")
+    include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/obs-dependencies.cmake")
+endif()
 
 find_package(Qt6 REQUIRED COMPONENTS Widgets)
 
