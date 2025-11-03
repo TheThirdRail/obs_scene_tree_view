@@ -1,0 +1,2 @@
+log_status() { print -PR -- ${*} }
+

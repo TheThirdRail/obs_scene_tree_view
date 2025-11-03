@@ -1,0 +1,96 @@
+#!/usr/bin/env zsh
+builtin emulate -L zsh
+setopt EXTENDED_GLOB
+setopt PUSHD_SILENT
+setopt ERR_EXIT
+setopt ERR_RETURN
+setopt NO_UNSET
+setopt PIPE_FAIL
+setopt NO_AUTO_PUSHD
+setopt NO_PUSHD_IGNORE_DUPS
+setopt FUNCTION_ARGZERO
+
+if (( ! ${+CI} )) {
+  print -u2 -PR "%F{1} ✖︎ ${ZSH_ARGZERO:t:r} requires CI environment%f"
+  exit 1
+}
+autoload -Uz is-at-least && if ! is-at-least 5.9; then
+  print -u2 -PR "${CI:+::error::}%F{1}${funcstack[1]##*/}:%f Running on Zsh version %B${ZSH_VERSION}%b, but Zsh %B5.2%b is the minimum supported version. Upgrade Zsh to fix this issue."
+  exit 1
+fi
+TRAPZERR() {
+  print -u2 -PR "::error::%F{1} ✖︎ script execution error%f"
+  print -PR -e " Callstack: ${(j:\n :)funcfiletrace} "
+  exit 2
+}
+
+package() {
+  if (( ! ${+SCRIPT_HOME} )) typeset -g SCRIPT_HOME=${ZSH_ARGZERO:A:h}
+  local host_os='macos'
+  local project_root=${SCRIPT_HOME:A:h:h}
+  local buildspec_file=${project_root}/buildspec.json
+  fpath=("${SCRIPT_HOME}/utils.zsh" ${fpath})
+  autoload -Uz log_group log_error log_output check_macos
+
+  if [[ ! -r ${buildspec_file} ]] {
+    log_error 'No buildspec.json found. Please create a build specification for your project.'
+    return 2
+  }
+
+  local -i debug=0
+  local config='RelWithDebInfo'
+  local -r -a _valid_configs=(Debug RelWithDebInfo Release MinSizeRel)
+  local -i codesign=0
+  local -i notarize=0
+  local -i package=0
+
+  local -a args
+  while (( $# )) {
+    case ${1} {
+      --) shift; args+=($@); break ;;
+      -c|--config) config=${2}; shift 2 ;;
+      -s|--codesign) codesign=1; shift ;;
+      -n|--notarize) notarize=1; codesign=1; shift ;;
+      -p|--package) package=1; shift ;;
+      --debug) debug=1; shift ;;
+      *) shift ;;
+    }
+  }
+  set -- ${(@)args}
+
+  check_macos
+
+  local product_name product_version
+  read -r product_name product_version <<< "$(jq -r '. | {name, version} | join(" ")' ${buildspec_file})"
+  local output_name="${product_name}-${product_version}-${host_os}-universal"
+
+  # Create macOS app-support layout from install tree
+  local install_root="${project_root}/release/${config}"
+  local staging="${project_root}/release/${output_name}"
+  rm -rf "${staging}"
+  mkdir -p "${staging}/Library/Application Support/obs-studio/plugins/${product_name}.plugin/Contents/MacOS"
+  mkdir -p "${staging}/Library/Application Support/obs-studio/plugins/${product_name}/locale"
+
+  # Move/copy dylib into plugin bundle
+  local dylib=("${install_root}/lib/obs-plugins"/*.dylib(N[1]))
+  if [[ -f ${dylib} ]] {
+    cp -f "${dylib}" "${staging}/Library/Application Support/obs-studio/plugins/${product_name}.plugin/Contents/MacOS/${product_name}"
+  else
+    log_error 'No dylib found in install tree. Build must run first.'
+    return 2
+  }
+
+  # Copy locales from install tree
+  if [[ -d "${install_root}/share/obs/obs-plugins/${product_name}/locale" ]] {
+    cp -R "${install_root}/share/obs/obs-plugins/${product_name}/locale/"* "${staging}/Library/Application Support/obs-studio/plugins/${product_name}/locale/"
+  }
+
+  # Archive
+  pushd "${staging}"
+  XZ_OPT=-T0 tar -cvJf "${project_root}/release/${output_name}.tar.xz" "Library"
+  popd
+  log_group
+}
+
+package ${@}
+

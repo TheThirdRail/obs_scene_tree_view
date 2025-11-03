@@ -1,0 +1,92 @@
+#!/usr/bin/env zsh
+builtin emulate -L zsh
+setopt EXTENDED_GLOB
+setopt PUSHD_SILENT
+setopt ERR_EXIT
+setopt ERR_RETURN
+setopt NO_UNSET
+setopt PIPE_FAIL
+setopt NO_AUTO_PUSHD
+setopt NO_PUSHD_IGNORE_DUPS
+setopt FUNCTION_ARGZERO
+
+autoload -Uz is-at-least && if ! is-at-least 5.2; then
+  print -u2 -PR "${CI:+::error::}%F{1}${funcstack[1]##*/}:%f Running on Zsh version %B${ZSH_VERSION}%b, but Zsh %B5.2%b is the minimum supported version. Upgrade Zsh to fix this issue."
+  exit 1
+fi
+
+TRAPZERR() {
+  if (( ${_loglevel:-3} > 2 )) {
+    print -u2 -PR "${CI:+::error::}%F{1} ✖︎ script execution error%f"
+    print -PR -e " Callstack: ${(j:\n :)funcfiletrace} "
+  }
+  exit 2
+}
+
+build() {
+  if (( ! ${+SCRIPT_HOME} )) typeset -g SCRIPT_HOME=${ZSH_ARGZERO:A:h}
+  local host_os='ubuntu'
+  local project_root=${SCRIPT_HOME:A:h:h}
+  local buildspec_file=${project_root}/buildspec.json
+  fpath=("${SCRIPT_HOME}/utils.zsh" ${fpath})
+  autoload -Uz log_group log_info log_error log_output set_loglevel check_ubuntu setup_ubuntu
+
+  if [[ ! -r ${buildspec_file} ]] {
+    log_error 'No buildspec.json found. Please create a build specification for your project.'
+    return 2
+  }
+
+  local -i debug=0
+  typeset -g -a skips=()
+  local -i verbosity=1
+  local target
+  local config='RelWithDebInfo'
+  local -r -a _valid_targets=( ubuntu-x86_64 )
+  local -r -a _valid_configs=(Debug RelWithDebInfo Release MinSizeRel)
+  local -r -a _valid_generators=(Ninja 'Unix Makefiles')
+  local generator='Ninja'
+
+  local -a args
+  while (( $# )) {
+    case ${1} {
+      --) shift; args+=($@); break ;;
+      -t|--target) target=${2}; shift 2 ;;
+      -c|--config) config=${2}; shift 2 ;;
+      --generator) generator=${2}; shift 2 ;;
+      --debug) debug=1; shift ;;
+      *) shift ;;
+    }
+  }
+  : "${target:="${host_os}-${CPUTYPE}"}"
+  set -- ${(@)args}
+
+  set_loglevel ${verbosity}
+  check_${host_os}
+  setup_ubuntu
+
+  local product_name product_version
+  read -r product_name product_version <<< "$(jq -r '. | {name, version} | join(" ")' ${buildspec_file})"
+
+  pushd ${project_root}
+  local -a cmake_args=()
+  local -a cmake_build_args=(--build)
+  local -a cmake_install_args=(--install)
+
+  local _preset="${target%%-*}${CI:+-ci}"
+  cmake_args+=( --preset ${_preset}-${target##*-} -G "${generator}" -DQT_VERSION=${QT_VERSION:-6} -DCMAKE_BUILD_TYPE=${config} -DCMAKE_INSTALL_PREFIX=/usr )
+  if [[ ${generator} == 'Unix Makefiles' ]] {
+    cmake_build_args+=(--preset ${_preset}-${target##*-} --config ${config} --parallel $(( $(nproc) + 1 )))
+  } else {
+    cmake_build_args+=(--preset ${_preset}-${target##*-} --config ${config} --parallel)
+  }
+  cmake_install_args+=(build_${target##*-} --prefix ${project_root}/release/${config})
+
+  cmake ${cmake_args}
+  cmake ${cmake_build_args}
+  cmake ${cmake_install_args}
+  popd
+  log_group
+}
+
+build ${@}
+

@@ -1,0 +1,84 @@
+#!/usr/bin/env zsh
+builtin emulate -L zsh
+setopt EXTENDED_GLOB
+setopt PUSHD_SILENT
+setopt ERR_EXIT
+setopt ERR_RETURN
+setopt NO_UNSET
+setopt PIPE_FAIL
+setopt NO_AUTO_PUSHD
+setopt NO_PUSHD_IGNORE_DUPS
+setopt FUNCTION_ARGZERO
+
+autoload -Uz is-at-least && if ! is-at-least 5.2; then
+  print -u2 -PR "${CI:+::error::}%F{1}${funcstack[1]##*/}:%f Running on Zsh version %B${ZSH_VERSION}%b, but Zsh %B5.2%b is the minimum supported version. Upgrade Zsh to fix this issue."
+  exit 1
+fi
+
+TRAPZERR() {
+  if (( ${_loglevel:-3} > 2 )) {
+    print -u2 -PR "${CI:+::error::}%F{1} ✖︎ script execution error%f"
+    print -PR -e " Callstack: ${(j:\n :)funcfiletrace} "
+  }
+  exit 2
+}
+
+package() {
+  if (( ! ${+SCRIPT_HOME} )) typeset -g SCRIPT_HOME=${ZSH_ARGZERO:A:h}
+  local host_os='ubuntu'
+  local project_root=${SCRIPT_HOME:A:h:h}
+  local buildspec_file=${project_root}/buildspec.json
+  fpath=("${SCRIPT_HOME}/utils.zsh" ${fpath})
+  autoload -Uz set_loglevel log_info log_group log_error log_output check_${host_os}
+  
+  if [[ ! -r ${buildspec_file} ]] {
+    log_error 'No buildspec.json found. Please create a build specification for your project.'
+    return 2
+  }
+
+  local -i verbosity=1
+  local -r -a _valid_targets=( ubuntu-x86_64 )
+  local target
+  local config='RelWithDebInfo'
+  local -r -a _valid_configs=(Debug RelWithDebInfo Release MinSizeRel)
+  local -i package=0
+
+  local -a args
+  while (( $# )) {
+    case ${1} {
+      --) shift; args+=($@); break ;;
+      -t|--target) target=${2}; shift 2 ;;
+      -c|--config) config=${2}; shift 2 ;;
+      -p|--package) package=1; shift ;;
+      -q|--quiet) (( verbosity -= 1 )) || true; shift ;;
+      -v|--verbose) (( verbosity += 1 )); shift ;;
+      --debug) verbosity=3; shift ;;
+      *) shift ;;
+    }
+  }
+  : "${target:="${host_os}-${CPUTYPE}"}"
+  set -- ${(@)args}
+
+  set_loglevel ${verbosity}
+  check_${host_os}
+
+  local product_name product_version
+  read -r product_name product_version <<< "$(jq -r '. | {name, version} | join(" ")' ${buildspec_file})"
+
+  if (( package )); then
+    # Use CMake packaging target if available
+    pushd ${project_root}
+    cmake --build build_${target##*-} --config ${config} -t package
+    popd
+  else
+    log_group "Archiving ${product_name}..."
+    local output_name="${product_name}-${product_version}-${target##*-}-ubuntu-gnu"
+    pushd ${project_root}/release/${config}
+    XZ_OPT=-T0 tar -cvJf ${project_root}/release/${output_name}.tar.xz lib share
+    popd
+  fi
+  log_group
+}
+
+package ${@}
+

@@ -1,0 +1,13 @@
+autoload -Uz log_error log_group
+if (( ! ${+project_root} )) { log_error "'project_root' not set. Please set before running ${0}."; return 2 }
+if (( ! ${+target} )) { log_error "'target' not set. Please set before running ${0}."; return 2 }
+pushd ${project_root}
+typeset -g QT_VERSION
+local -a apt_args=( ${CI:+-y} --no-install-recommends )
+sudo add-apt-repository --yes ppa:obsproject/obs-studio
+sudo apt update
+sudo apt-get install ${apt_args} build-essential libgles2-mesa-dev libsimde-dev obs-studio
+local -a _qt_packages=( qt6-base-dev libqt6svg6-dev qt6-base-private-dev )
+sudo apt-get install ${apt_args} ${_qt_packages}
+log_group
+

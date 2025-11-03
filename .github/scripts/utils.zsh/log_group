@@ -1,0 +1,4 @@
+log_group() {
+  print '::group::'${1:-}
+}
+

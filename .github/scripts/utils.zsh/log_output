@@ -1,0 +1,2 @@
+log_output() { print -PR -- ${*} }
+

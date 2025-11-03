@@ -1,0 +1,19 @@
+autoload -Uz log_info log_status log_error log_debug log_group
+log_group 'Check Linux build requirements'
+if (( ! ${+commands[apt-get]} )) { log_error 'No apt-get command found. Please install apt'; return 2 }
+local -a dependencies=("${(fA)$(<${SCRIPT_HOME}/.Aptfile)}")
+local -a install_list
+local binary
+sudo apt-get update -qq
+for dependency (${dependencies}) {
+  local -a tokens=(${=dependency//(,|:|\')/})
+  if [[ ! ${tokens[1]} == 'package' ]] continue
+  if [[ ${#tokens} -gt 2 && ${tokens[3]} == 'bin' ]] { binary=${tokens[4]} } else { binary=${tokens[2]} }
+  if (( ! ${+commands[${binary}]} )) install_list+=(${tokens[2]})
+}
+if (( ${#install_list} )) {
+  local -a apt_args=( ${CI:+-y} --no-install-recommends )
+  sudo apt-get ${apt_args} install ${install_list}
+}
+log_group
+
