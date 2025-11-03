@@ -15,6 +15,18 @@ A powerful OBS Studio plugin that adds a hierarchical scene tree view dock, enab
 - **Scene Collection Support**: Automatically saves and restores scene tree structure with scene collections
 - **Cross-Platform**: Works on Windows, macOS, and Linux
 
+## Releases
+
+Official builds for Windows, macOS, and Linux are published on the GitHub Releases page:
+- https://github.com/TheThirdRail/obs_scene_tree_view/releases
+
+Each ZIP is packaged with a system-level folder layout so you can unzip directly into your system directories and everything “falls into place.” An INSTALL.txt is included inside each ZIP with step-by-step instructions.
+
+- Windows: unzip into C:\\Program Files (includes DLL + PDB + locales)
+- macOS: unzip into / (Library/Application Support paths)
+- Linux: unzip into / (usr/lib + usr/share paths)
+
+
 ## Prerequisites (Windows)
 
 - Windows 10/11 (64-bit)
