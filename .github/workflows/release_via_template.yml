@@ -25,13 +25,15 @@ jobs:
       - name: Prepare release assets
         run: |
           mkdir -p release
-          find artifacts -type f -name "*.zip" -exec cp {} release/ \;
+          find artifacts -type f \( -name "*.zip" -o -name "*.tar.xz" \) -exec cp {} release/ \;
           ls -la release
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: release/*.zip
+          files: |
+            release/*.zip
+            release/*.tar.xz
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
