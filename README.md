@@ -8,6 +8,7 @@ A powerful OBS Studio plugin that adds a hierarchical scene tree view dock, enab
 
 - **Hierarchical Scene Organization**: Organize scenes into folders for better project structure
 - **Drag-and-Drop Support**: Easily reorder scenes and folders with intuitive drag-and-drop
+
 - **Scene Management**: Add, remove, rename, and manage scenes directly from the tree view
 - **Folder Support**: Create and organize scenes into logical groups
 - **Per-Scene Transitions**: Configure custom transitions for individual scenes
@@ -180,8 +181,16 @@ sudo cmake --install . --config Release
 
 #### Organizing Scenes
 - **Drag and Drop**: Click and drag scenes to reorder or move them into folders
+
 - **Rename**: Right-click a scene/folder → **Rename**
 - **Delete**: Right-click a scene/folder → **Delete**
+
+#### Reordering with Move Up/Down buttons
+- Select a scene or folder, then click Move Up or Move Down to move it exactly one position.
+- The selection stays on the moved item after the move.
+- When the selected item is at the top, Up is disabled; when it is at the bottom, Down is disabled.
+- Disabled icons retain their normal color (non-dimmed) to keep the UI visually stable; only enablement changes.
+
 
 #### Scene Selection
 - Click a scene in the tree to select it as the current scene

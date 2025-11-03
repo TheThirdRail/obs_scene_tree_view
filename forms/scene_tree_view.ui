@@ -117,6 +117,7 @@
             </property>
            </widget>
           </item>
+
           <item>
            <widget class="QToolButton" name="stvMoveUp">
             <property name="text">

@@ -409,15 +409,19 @@ bool StvItemModel::MoveIndexByOne(const QModelIndex &index, int delta)
 
 	const int row = index.row();
 	const int rowCount = parent_item->rowCount();
-	const int target = row + delta;
-	if (target < 0 || target >= rowCount)
+	int insertPos = row + delta;
+	// For moving down, insert after the next item (to land at row+1 after removal)
+	if (delta > 0)
+		insertPos++;
+	// Allow insert at end (insertPos == rowCount) but not beyond
+	if (insertPos < 0 || insertPos > rowCount)
 		return false;
 
 	if (item->type() == SCENE) {
 		obs_weak_source_t *weak = item->data(OBS_SCENE).value<obs_weak_source_ptr>().ptr;
-		this->MoveSceneItem(weak, target, parent_item);
+		this->MoveSceneItem(weak, insertPos, parent_item);
 	} else if (item->type() == FOLDER) {
-		this->MoveSceneFolder(item, target, parent_item);
+		this->MoveSceneFolder(item, insertPos, parent_item);
 	} else {
 		return false;
 	}
