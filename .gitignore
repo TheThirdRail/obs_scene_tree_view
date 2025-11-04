@@ -17,6 +17,14 @@ install_manifest.txt
 # Tooling and editor artifacts
 /.augment/
 *.code-workspace
+/.serena/
+plan.md
+project_rules.md
 
 # Windows artifacts
 nul
+
+
+# Packaging outputs (release zips and staged folder layouts)
+/obs-scene-tree-view-*.zip
+/obs-studio/

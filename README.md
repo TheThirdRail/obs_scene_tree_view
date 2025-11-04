@@ -3,6 +3,9 @@
 A powerful OBS Studio plugin that adds a hierarchical scene tree view dock, enabling efficient scene and folder management with drag-and-drop support.
 
 ![Screenshot](images/obs_scene_tree_view_example.png)
+> Note: This is a third‑party plugin and is not affiliated with or endorsed by the OBS Project.
+
+
 
 ## Features
 
@@ -306,7 +309,7 @@ Contributions are welcome! Please follow these guidelines:
 
 ## License
 
-This project is licensed under the **GNU General Public License v2.0** - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the **GNU General Public License v2.0 or later** – see the [LICENSE](LICENSE) file for details.
 
 ## Credits
 
@@ -319,7 +322,7 @@ This project is licensed under the **GNU General Public License v2.0** - see the
 For issues, questions, or suggestions:
 
 1. Check the [Troubleshooting](#troubleshooting) section
-2. Search existing [GitHub Issues](https://github.com/DigitOtter/obs_scene_tree_view/issues)
+2. Search existing [GitHub Issues](https://github.com/TheThirdRail/obs_scene_tree_view/issues)
 3. Create a new issue with:
    - OBS Studio version
    - Plugin version
