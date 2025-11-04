@@ -28,3 +28,5 @@ nul
 # Packaging outputs (release zips and staged folder layouts)
 /obs-scene-tree-view-*.zip
 /obs-studio/
+/scene-tree-view-*.zip
+
